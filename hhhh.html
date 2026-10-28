@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#4f46e5">
+  <title>每日抽签 · 知识点</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      background: linear-gradient(160deg, #eef2ff 0%, #f5f7fa 100%);
+      /* 用动态视口高度，兼容手机地址栏伸缩 */
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* 手机默认无外边距，大屏才加内边距 */
+      padding: 0;
+    }
+
+    /* ===== 小屏（手机）：全屏铺满，无圆角 ===== */
+    .app {
+      width: 100%;
+      height: 100dvh;          /* 占满动态视口 */
+      max-height: none;
+      background: #ffffff;
+      border-radius: 0;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      /* 安全区：刘海 & 底部手势条 */
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* ===== 中大屏（平板/桌面）：居中卡片 ===== */
+    @media (min-width: 600px) {
+      body {
+        padding: 20px;
+      }
+      .app {
+        width: 100%;
+        max-width: 560px;
+        height: 92dvh;
+        max-height: 900px;
+        border-radius: 32px;
+        box-shadow: 0 25px 50px -12px rgba(79, 70, 229, 0.18);
+        /* 大屏下用自身圆角，不再需要安全区 padding（但保留也无害） */
+      }
+    }
+
+    /* ===== 超宽桌面：限制最大宽度，居中 ===== */
+    @media (min-width: 1200px) {
+      .app {
+        max-width: 580px;
+      }
+    }
+
+    /* 头部 */
+    .header {
+      padding: clamp(16px, 4vw, 24px) clamp(16px, 4vw, 24px) clamp(10px, 2vw, 16px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: white;
+      border-bottom: 1px solid #eef2f6;
+      flex-shrink: 0;
+    }
+
+    .header h1 {
+      font-size: clamp(1.3rem, 4.5vw, 1.8rem);
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #1e1b4b;
+    }
+
+    .header .count {
+      background: #eef2ff;
+      color: #4f46e5;
+      padding: clamp(4px, 1.5vw, 7px) clamp(10px, 3vw, 15px);
+      border-radius: 40px;
+      font-size: clamp(0.75rem, 2.8vw, 0.9rem);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* 抽签展示区 —— 随屏幕高度弹性收缩 */
+    .draw-section {
+      padding: clamp(14px, 3.5vw, 22px) clamp(14px, 4vw, 24px) clamp(6px, 1.5vw, 10px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: clamp(10px, 2.5vw, 18px);
+      flex-shrink: 0;
+    }
+
+    .draw-card {
+      width: 100%;
+      /* 用 min-height + 弹性，保证小屏不被挤压 */
+      min-height: clamp(110px, 20vh, 160px);
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      border-radius: clamp(18px, 4vw, 26px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(16px, 4vw, 26px);
+      box-shadow: 0 12px 28px -8px rgba(79, 70, 229, 0.45);
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s ease;
+    }
+
+    .draw-card::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -20%;
+      width: 140%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,0.18) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .draw-card.pop {
+      animation: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes pop {
+      0% { transform: scale(0.92); }
+      50% { transform: scale(1.04); }
+      100% { transform: scale(1); }
+    }
+
+    .draw-text {
+      color: white;
+      font-size: clamp(1.1rem, 4.8vw, 1.5rem);
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.6;
+      word-break: break-word;
+      white-space: pre-wrap;
+      position: relative;
+      z-index: 1;
+    }
+
+    .draw-text.placeholder {
+      opacity: 0.75;
+      font-weight: 400;
+      font-size: clamp(0.95rem, 3.8vw, 1.15rem);
+    }
+
+    .draw-text.rolling {
+      opacity: 0.85;
+      filter: blur(0.5px);
+    }
+
+    /* 抽签按钮 */
+    .draw-btn {
+      width: 100%;
+      padding: clamp(14px, 3.5vw, 18px);
+      border: none;
+      border-radius: clamp(16px, 4vw, 20px);
+      background: #1e1b4b;
+      color: white;
+      font-size: clamp(1rem, 3.6vw, 1.15rem);
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.15s;
+      box-shadow: 0 8px 20px -6px rgba(30, 27, 75, 0.4);
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .draw-btn:active {
+      transform: scale(0.97);
+      background: #312e81;
+    }
+
+    .draw-btn:disabled {
+      opacity: 0.55;
+      pointer-events: none;
+    }
+
+    .draw-btn .icon {
+      font-size: clamp(1.1rem, 4vw, 1.3rem);
+    }
+
+    /* 分区标题 */
+    .section-title {
+      padding: clamp(4px, 1vw, 6px) clamp(16px, 4vw, 24px) clamp(6px, 1.5vw, 10px);
+      font-size: clamp(0.75rem, 2.8vw, 0.85rem);
+      font-weight: 600;
+      color: #94a3b8;
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .clear-btn {
+      background: none;
+      border: none;
+      color: #ef4444;
+      font-size: clamp(0.7rem, 2.5vw, 0.8rem);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+    }
+
+    .clear-btn:active {
+      background: #fee2e2;
+    }
+
+    /* 知识点列表 —— 核心滚动区，flex:1 自动占满剩余空间 */
+    .knowledge-list {
+      flex: 1;
+      min-height: 60px;       /* 保证小屏也有可见区域 */
+      overflow-y: auto;
+      padding: 0 clamp(12px, 3.5vw, 20px) clamp(8px, 2vw, 14px);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(8px, 2vw, 12px);
+      background: #fafcff;
+      -webkit-overflow-scrolling: touch; /* iOS 顺滑滚动 */
+    }
+
+    .knowledge-item {
+      background: white;
+      border-radius: clamp(12px, 3vw, 18px);
+      padding: clamp(11px, 3vw, 16px) clamp(13px, 3.5vw, 18px);
+      border: 1px solid #edf2f7;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      transition: background 0.15s;
+      animation: fadeIn 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .knowledge-item.highlight {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+    }
+
+    .knowledge-content {
+      font-size: clamp(0.92rem, 3.4vw, 1.05rem);
+      line-height: 1.5;
+      color: #1e293b;
+      word-break: break-word;
+      flex: 1;
+    }
+
+    .del-btn {
+      background: none;
+      border: none;
+      color: #cbd5e1;
+      font-size: clamp(1rem, 3.8vw, 1.25rem);
+      cursor: pointer;
+      padding: 6px 8px;
+      border-radius: 50%;
+      line-height: 1;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .del-btn:active {
+      color: #ef4444;
+      background: #fee2e2;
+    }
+
+    /* 空状态 */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(24px, 6vw, 40px) 20px;
+      color: #94a3b8;
+      text-align: center;
+      gap: 12px;
+      flex: 1;
+    }
+
+    .empty-state span {
+      font-size: clamp(2.4rem, 10vw, 3.2rem);
+      opacity: 0.5;
+    }
+
+    .empty-state p {
+      font-size: clamp(0.9rem, 3.2vw, 1rem);
+    }
+
+    /* 底部添加区 —— flex-shrink:0 保证不被压缩 */
+    .add-area {
+      background: white;
+      padding: clamp(10px, 2.5vw, 16px) clamp(12px, 3.5vw, 20px) clamp(14px, 3.5vw, 20px);
+      border-top: 1px solid #eef2f6;
+      display: flex;
+      gap: clamp(8px, 2vw, 12px);
+      align-items: flex-end;
+      flex-shrink: 0;
+      /* 大屏时底部额外留白（因为 app 有圆角） */
+    }
+
+    .add-area textarea {
+      flex: 1;
+      border: 1.5px solid #e2e8f0;
+      border-radius: clamp(14px, 3.5vw, 20px);
+      padding: clamp(10px, 2.5vw, 14px) clamp(13px, 3.5vw, 18px);
+      font-size: clamp(0.95rem, 3.4vw, 1.05rem);
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      background: #f8fafc;
+      transition: border 0.15s, background 0.15s;
+      font-family: inherit;
+      min-height: clamp(46px, 10vw, 54px);
+      max-height: clamp(80px, 20vh, 110px);
+      color: #0f172a;
+    }
+
+    .add-area textarea:focus {
+      border-color: #4f46e5;
+      background: #ffffff;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    .add-area textarea::placeholder {
+      color: #9ca3af;
+    }
+
+    .add-btn {
+      background: #4f46e5;
+      border: none;
+      border-radius: 50%;
+      width: clamp(46px, 12vw, 54px);
+      height: clamp(46px, 12vw, 54px);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      box-shadow: 0 6px 14px rgba(79, 70, 229, 0.3);
+      color: white;
+      font-size: clamp(1.5rem, 6vw, 1.9rem);
+      font-weight: 300;
+      line-height: 1;
+      user-select: none;
+    }
+
+    .add-btn:active {
+      background: #4338ca;
+      transform: scale(0.94);
+    }
+
+    /* 历史提示 */
+    .history-hint {
+      font-size: clamp(0.68rem, 2.4vw, 0.78rem);
+      color: #94a3b8;
+      padding: 0 clamp(16px, 4vw, 24px) clamp(4px, 1vw, 8px);
+      min-height: 16px;
+      text-align: center;
+      flex-shrink: 0;
+      /* 单行省略 */
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* 滚动条 */
+    .knowledge-list::-webkit-scrollbar {
+      width: 4px;
+    }
+    .knowledge-list::-webkit-scrollbar-thumb {
+      background: #d1d9e6;
+      border-radius: 10px;
+    }
+
+    /* ===== 横屏手机：压缩垂直空间 ===== */
+    @media (max-height: 500px) and (orientation: landscape) {
+      .draw-card {
+        min-height: 80px;
+      }
+      .draw-section {
+        gap: 8px;
+        padding-top: 8px;
+      }
+      .header {
+        padding-top: 8px;
+        padding-bottom: 8px;
+      }
+      .header h1 {
+        font-size: 1.2rem;
+      }
+      .draw-btn {
+        padding: 10px;
+      }
+      .history-hint {
+        display: none; /* 横屏空间紧张，隐藏历史提示 */
+      }
+    }
+
+    /* ===== 横屏平板/桌面：抽签区可加宽 ===== */
+    @media (min-width: 700px) and (orientation: landscape) {
+      .draw-card {
+        min-height: 180px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" role="application">
+    <header class="header">
+      <h1>🎲 每日抽签</h1>
+      <div class="count" id="totalCount">0 个</div>
+    </header>
+
+    <div class="draw-section">
+      <div class="draw-card" id="drawCard">
+        <div class="draw-text placeholder" id="drawText">点击下方按钮开始抽签</div>
+      </div>
+      <button class="draw-btn" id="drawBtn">
+        <span class="icon">🎯</span>
+        <span id="drawBtnText">抽取知识点</span>
+      </button>
+    </div>
+    <div class="history-hint" id="historyHint"></div>
+
+    <div class="section-title">
+      <span>📚 知识点库</span>
+      <button class="clear-btn" id="clearAllBtn" style="display:none;">清空全部</button>
+    </div>
+
+    <div class="knowledge-list" id="knowledgeList"></div>
+
+    <div class="add-area">
+      <textarea id="inputField" placeholder="输入新知识点…" rows="1" maxlength="200"></textarea>
+      <button class="add-btn" id="addBtn" aria-label="添加知识点">+</button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const STORAGE_KEY = 'knowledge_draw_list';
+      const HISTORY_KEY = 'knowledge_draw_history';
+
+      let knowledgeList = [];
+      let lastDrawId = null;
+      let drawHistory = [];
+      let isRolling = false;
+      let rollTimer = null;
+
+      const drawCard = document.getElementById('drawCard');
+      const drawText = document.getElementById('drawText');
+      const drawBtn = document.getElementById('drawBtn');
+      const drawBtnText = document.getElementById('drawBtnText');
+      const knowledgeListEl = document.getElementById('knowledgeList');
+      const inputField = document.getElementById('inputField');
+      const addBtn = document.getElementById('addBtn');
+      const totalCount = document.getElementById('totalCount');
+      const clearAllBtn = document.getElementById('clearAllBtn');
+      const historyHint = document.getElementById('historyHint');
+
+      function uid() {
+        return Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+      }
+
+      function saveAll() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(knowledgeList));
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(drawHistory.slice(0, 5)));
+        } catch (e) {
+          console.warn('保存失败', e);
+        }
+      }
+
+      function loadAll() {
+        try {
+          const k = localStorage.getItem(STORAGE_KEY);
+          if (k) {
+            const parsed = JSON.parse(k);
+            if (Array.isArray(parsed)) {
+              knowledgeList = parsed
+                .filter(x => x && typeof x.content === 'string')
+                .map(x => ({ id: String(x.id || uid()), content: String(x.content) }));
+            }
+          }
+          const h = localStorage.getItem(HISTORY_KEY);
+          if (h) {
+            const parsedH = JSON.parse(h);
+            if (Array.isArray(parsedH)) {
+              drawHistory = parsedH.filter(x => x && typeof x.content === 'string').slice(0, 5);
+            }
+          }
+        } catch (e) {
+          console.warn('读取失败', e);
+        }
+      }
+
+      function updateCount() {
+        totalCount.textContent = `${knowledgeList.length} 个`;
+        clearAllBtn.style.display = knowledgeList.length > 0 ? 'inline-block' : 'none';
+      }
+
+      function renderHistoryHint() {
+        if (drawHistory.length === 0) {
+          historyHint.textContent = '';
+          return;
+        }
+        const latest = drawHistory[0];
+        const t = new Date(latest.time);
+        const hh = String(t.getHours()).padStart(2, '0');
+        const mm = String(t.getMinutes()).padStart(2, '0');
+        const preview = latest.content.length > 14 ? latest.content.slice(0, 14) + '…' : latest.content;
+        historyHint.textContent = `上次抽到「${preview}」 · ${hh}:${mm}`;
+      }
+
+      function renderKnowledgeList() {
+        knowledgeListEl.innerHTML = '';
+
+        if (knowledgeList.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'empty-state';
+          empty.innerHTML = `<span>📭</span><p>还没有知识点<br>在下方输入框添加吧</p>`;
+          knowledgeListEl.appendChild(empty);
+          updateCount();
+          return;
+        }
+
+        knowledgeList.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'knowledge-item';
+          if (item.id === lastDrawId) div.classList.add('highlight');
+          div.dataset.id = item.id;
+
+          const content = document.createElement('div');
+          content.className = 'knowledge-content';
+          content.textContent = item.content;
+
+          const del = document.createElement('button');
+          del.className = 'del-btn';
+          del.innerHTML = '✕';
+          del.setAttribute('aria-label', '删除');
+          del.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteItem(item.id);
+          });
+
+          div.appendChild(content);
+          div.appendChild(del);
+          knowledgeListEl.appendChild(div);
+        });
+
+        updateCount();
+      }
+
+      function renderAll() {
+        renderKnowledgeList();
+        renderHistoryHint();
+      }
+
+      function deleteItem(id) {
+        if (!confirm('删除这个知识点？')) return;
+        knowledgeList = knowledgeList.filter(x => x.id !== id);
+        if (lastDrawId === id) lastDrawId = null;
+        saveAll();
+        renderAll();
+      }
+
+      function clearAll() {
+        if (knowledgeList.length === 0) return;
+        if (!confirm(`确定清空全部 ${knowledgeList.length} 个知识点吗？此操作不可恢复。`)) return;
+        knowledgeList = [];
+        lastDrawId = null;
+        saveAll();
+        renderAll();
+        drawText.textContent = '点击下方按钮开始抽签';
+        drawText.className = 'draw-text placeholder';
+      }
+
+      function addKnowledge() {
+        const text = inputField.value.trim();
+        if (!text) {
+          inputField.focus();
+          return;
+        }
+        knowledgeList.push({ id: uid(), content: text });
+        saveAll();
+        inputField.value = '';
+        inputField.style.height = 'auto';
+        renderAll();
+        knowledgeListEl.scrollTop = knowledgeListEl.scrollHeight;
+      }
+
+      function draw() {
+        if (isRolling) return;
+        if (knowledgeList.length === 0) {
+          alert('知识点库是空的，请先添加知识点！');
+          return;
+        }
+
+        isRolling = true;
+        drawBtn.disabled = true;
+        drawBtnText.textContent = '抽签中…';
+        drawText.classList.remove('placeholder');
+        drawText.classList.add('rolling');
+        drawCard.classList.remove('pop');
+
+        const items = knowledgeList;
+        const total = items.length;
+        const duration = Math.min(1200, 400 + total * 30);
+        const startTime = Date.now();
+
+        function rollStep() {
+          const elapsed = Date.now() - startTime;
+
+          if (elapsed >= duration) {
+            const finalItem = items[Math.floor(Math.random() * total)];
+            lastDrawId = finalItem.id;
+            drawText.textContent = finalItem.content;
+            drawText.classList.remove('rolling');
+            drawCard.classList.add('pop');
+            drawBtnText.textContent = '再抽一次';
+            drawBtn.disabled = false;
+            isRolling = false;
+
+            drawHistory.unshift({ content: finalItem.content, time: Date.now() });
+            drawHistory = drawHistory.slice(0, 5);
+            saveAll();
+            renderHistoryHint();
+            renderKnowledgeList();
+            return;
+          }
+
+          const randomItem = items[Math.floor(Math.random() * total)];
+          drawText.textContent = randomItem.content;
+
+          const progress = elapsed / duration;
+          let nextInterval;
+          if (progress < 0.5) nextInterval = 55;
+          else if (progress < 0.8) nextInterval = 90;
+          else nextInterval = 150;
+
+          rollTimer = setTimeout(rollStep, nextInterval);
+        }
+
+        if (rollTimer) clearTimeout(rollTimer);
+        rollStep();
+      }
+
+      function autoResize() {
+        inputField.style.height = 'auto';
+        inputField.style.height = Math.min(inputField.scrollHeight, 100) + 'px';
+      }
+
+      function init() {
+        loadAll();
+        renderAll();
+
+        drawBtn.addEventListener('click', draw);
+        addBtn.addEventListener('click', addKnowledge);
+        inputField.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            addKnowledge();
+          }
+        });
+        inputField.addEventListener('input', autoResize);
+        autoResize();
+        clearAllBtn.addEventListener('click', clearAll);
+
+        // 移动端键盘弹出时，防止输入框被遮挡：聚焦时滚到底部
+        inputField.addEventListener('focus', () => {
+          setTimeout(() => {
+            inputField.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }, 300);
+        });
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
